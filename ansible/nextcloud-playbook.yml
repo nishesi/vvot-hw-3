@@ -1,30 +1,64 @@
+---
 - name: Nextcloud
-  hosts: nextcloud-server
+  hosts: nextcloud
+
   tasks:
-    - name: Get Docker installer
-      become: true
-      ansible.builtin.get_url:
-        url: https://get.docker.com
-        dest: ./get-docker.sh
-        mode: '755'
+    - name: Timezone Moscow
+      community.general.timezone:
+        name: Europe/Moscow
 
-    - name: Get Docker
-      become: true
-      changed_when: false
-      ansible.builtin.command:
-        cmd: ./get-docker.sh
+    - name: Update sw
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: "yes"
 
-    - name: Run Nextcloud
+    - name: Install dependencies
+      ansible.builtin.apt:
+        pkg:
+          - apache2
+          - libapache2-mod-php
+          - acl
+          - php-curl
+          - php-gd
+          - php-json
+          - php-mbstring
+          - php-xml
+          - php-zip
+          - php-intl
+          - php-mysql
+          - php-pgsql
+          - php-bcmath
+          - unzip
+          - python3-pip
+          - postgresql-all
+          - wget
+          - bzip2
+        state: present
+
+    - name: Install psycopg2
+      ansible.builtin.pip:
+        extra_args: "--break-system-packages"
+        name: psycopg2
+
+    - name: Install Nextcloud
+      ansible.builtin.unarchive:
+        dest: "/var/www/html"
+        src: "https://download.nextcloud.com/server/releases/latest-30.tar.bz2"
+        remote_src: true
+        owner: "www-data"
+        group: "www-data"
+        creates: "/var/www/html/nextcloud"
+
+    - name: Init PostgreSQL user
       become: true
-      community.docker.docker_container:
-        init: true
-        name: nextcloud-aio-mastercontainer
-        restart: true
-        image: nextcloud/all-in-one:latest
-        ports:
-          - 80:80
-          - 8080:8080
-          - 8443:8443
-        volumes:
-          - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
-          - /var/run/docker.sock:/var/run/docker.sock:ro
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: pguser
+        password: pgpassword
+
+    - name: Init PostgreSQL DB for Nextcloud
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: dbnextcloud
+        owner: pguser
